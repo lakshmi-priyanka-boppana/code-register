@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html>
+<body>
+<p>
+#include "device_functions.h"<br>
+#include<stdio.h><br>
+//-- Add needed #include statements<br>
+
+//define the SIZE of your data stream 100 Megabytes<br>
+#define SIZE    (100*1024*1024)<br>
+
+//kernel function<br>
+__global__ void histo_kernel( unsigned char *buffer,<br>
+                              long size,<br>
+                              unsigned int *histo ) {<br>
+    //--calculate the starting index and the offset to the next<br>
+    //--block that each thread will be processing<br>
+    int i = threadIdx.x + blockIdx.x * blockDim.x;<br>
+	int stride = blockDim.x * gridDim.x;<br>
+           
+    //-- create the loop what will increment your histo bins based on your buffer value<br>
+    //-- and make sure to increment your starting index by your calculated offset/stride<br>
+     while (i < size)<br>
+  {<br>
+          atomicAdd( &(histo[buffer[i]]), 1 );<br>
+              i += stride;<br>
+  }<br>
+}<br>
+
+int main( void ) {<br>
+
+    //variable that will hold 100 megabyte data stream<br>
+	
+    unsigned char *buffer;<br>
+
+    //--allocate memory for buffer variable<br>
+    buffer = (unsigned char*)malloc( SIZE );<br>
+    //--initialize buffer data stream with random byte values 0-255<br>
+    unsigned int histo[256];<br>
+    for (int i=0; i<256; i++)<br>
+		histo[i] = rand()%10;<br>
+
+    //--EXTRA CREDIT--<br>
+    // capture the start time<br>
+    // starting the timer here so that we include the cost of<br>
+    // all of the operations on the GPU.<br>
+    //--HINT: cudaEvent_t (look it up)<br>
+	cudaEvent_t start, stop;<br>
+	cudaEventCreate( &start );<br>
+	cudaEventCreate( &stop );<br>
+	cudaEventRecord( start, 0 );<br>
+    
+
+    //device variables for buffer and histogram bins<br>
+    unsigned char *dev_buffer;<br>
+    unsigned int *dev_histo;<br>
+
+
+    //--assign bin size appropriately from all the hints I gave you in the homework doc<br>
+    int binSize = 256;<br>
+	
+
+    //--allocate GPU memory for buffer<br>
+    cudaMalloc( (void**)&dev_buffer, SIZE );<br>
+	
+    //--copy host to device for buffer<br>
+	cudaMemcpy( dev_buffer, buffer, SIZE,cudaMemcpyHostToDevice );<br>
+
+
+    //allocating gpu memory for device histo bins<br>
+    cudaMalloc( (void**)&dev_histo, binSize * sizeof( int ));<br>
+	
+    //this is a new function we will use to initialize a data set with a single value, here it's zeroes<br>
+    //I have completed this for you to show you this new technique, that we don't need to use a for loop<br>
+    //if we are just going to have all the values be 0. <br>
+    //These values need to be 0 because all counting starts at 0 for each bin element.<br>
+    cudaMemset( dev_histo, 0, binSize * sizeof( int ));<br>
+
+    //--get the number of streaming multiprocessors <br>
+    //--hint: cudaDeviceProp<br>
+    cudaDeviceProp prop;<br>
+	cudaGetDeviceProperties( &prop, 0 );<br>
+	
+    int cudaSmCount = prop.multiProcessorCount;<br>
+
+    histo_kernel<<<cudaSmCount*2,binSize>>>( dev_buffer, SIZE, dev_histo );<br>
+    
+  
+    
+
+    //--copy the device histo bins to the host histo bins created above<br>
+	cudaMemcpy( histo, dev_histo,256 * sizeof( int ),cudaMemcpyDeviceToHost ) ;<br>
+    
+
+    //--EXTRA CREDIT--<br>
+    // get stop time, and display the timing results<br>
+    //--hint: ElapsedTime<br>
+    cudaEventRecord( stop, 0 );<br>
+    cudaEventSynchronize( stop );<br>
+	float elapsedTime;<br>
+	cudaEventElapsedTime( &elapsedTime,start, stop );<br>
+	printf( "Time to generate: %3.1f ms\n", elapsedTime );<br>
+
+    //--loop through the bins, add up the values in them and print your result<br>
+    //--hint: make sure they add up to your original size as explained in homework doc<br>
+    long result_expected = 100 * 1024 * 1024;<br>
+    printf("Expected Result: %ld\n",result_expected);<br>
+
+
+    long histoCount = 0;<br>
+	for (int i=0; i<256; i++) {<br>
+           histoCount += histo[i];<br>
+	}<br>
+	printf( "final Sum: %ld\n", histoCount );<br>
+    
+
+    //--free memory as needed<br>
+	cudaEventDestroy( start  );<br>
+	cudaEventDestroy( stop  );<br>
+	cudaFree( dev_histo )  ;<br>
+	cudaFree( dev_buffer ) ;<br>
+	free( buffer );<br>
+
+    return 0;<br>
+}<br>
+</p>
+</body>
+</html>
+
+
+
+
+

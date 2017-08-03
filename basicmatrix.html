@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html>
+<body>
+<p>
+#include<cuda.h><br>
+#include<stdio.h> <br>
+#include<stdlib.h><br>
+
+//-- Compute C = A * B<br>
+__global__ void MatrixMulKernel(float *A, float *B, float *C, int Width)<br>
+{<br>
+//-- Insert code to implement matrix multiplication here<br>
+        int ROW = threadIdx.x + blockIdx.x*blockDim.x;<br>
+        int COL = threadIdx.y + blockIdx.y*blockDim.y;<br>
+
+        //Pvalue stores the Pd element that is computed by the thread<br>
+        float sum = 0;<br>
+
+        for(int i = 0; i < Width ; ++i){<br>
+        
+                sum += (A[COL*Width + i] * B[i*Width + ROW] );<br>
+        }<br>
+
+       C[COL*Width + ROW] = sum;<br>
+}<br>
+int main(int argc, char **argv)<br>
+{<br>
+        srand(time(NULL));<br>
+        const int Width= 2;        <br>
+        
+        float *hostA;<br>
+        float *hostB;<br>
+        float *hostC;<br>
+
+        float *deviceA;<br>
+        float *deviceB;<br>
+        float *deviceC;<br>
+
+        int k = 2;<br>
+        int l = 2;<br>
+//--Allocate and initialize hostA and hostB matrices<br>
+hostA = (float *) malloc(Width *Width);<br>
+hostB = (float *) malloc(Width *Width);<br>
+hostC = (float *) malloc(Width *Width);<br>
+        for(int i = 0; i < (Width*Width) ; i++){<br>
+                hostA[i] = rand() % 10;<br>
+                hostB[i] = rand() % 10;<br>
+                printf("%.2f,%.2f\n",hostA[i],hostB[i]);<br>
+               
+        }<br>
+
+
+        int bytes = Width*Width*sizeof(float);<br>
+//--Allocate GPU memory<br>
+        cudaMalloc((void**)&deviceA, bytes);<br>
+        cudaMalloc((void**)&deviceB, bytes);<br>
+        cudaMalloc((void**)&deviceC, bytes);<br>
+
+//--copy memory to the GPU<br>
+        cudaMemcpy(deviceA,hostA,bytes,cudaMemcpyHostToDevice);<br>
+        cudaMemcpy(deviceB,hostB,bytes,cudaMemcpyHostToDevice);<br>
+	
+//--Initialize grid and block dimensions<br>
+        dim3 dimBlock((k-1)/Width+1,(l-1)/Width+1);<br>
+        dim3 dimGrid(Width,Width);<br>
+
+//--Launch the GPU kernel<br>
+        MatrixMulKernel<<<dimGrid,dimBlock>>>(deviceA,deviceB,deviceC,Width);<br>
+        
+        cudaDeviceSynchronize();<br>
+
+//--copy the GPU memory back to CPU<br>
+	cudaMemcpy(hostC,deviceC,bytes,cudaMemcpyDeviceToHost);<br>
+           
+	for(int i = 0; i < (Width*Width) ; i++){<br>
+                printf("%.2f \n", hostC[i]);<br>
+        }<br>
+
+//--Free the GPU memory<br>
+        cudaFree(deviceA);<br>
+        cudaFree(deviceB);<br>
+        cudaFree(deviceC);<br>
+
+        free(hostA);<br>
+        free(hostB);<br>
+        free(hostC);<br>
+        return 0;<br>
+}
+</p>
+</body>
+</html>
+
+

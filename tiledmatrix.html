@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html>
+<body>
+<p>
+#include <stdio.h><br>
+#include <stdlib.h><br>
+#include <math.h><br>
+#include <cuda.h><br>
+#define Tile_size 16<br>
+// Compute C = A * B<br>
+//-- Insert code to implement matrix multiplication here<br>
+__global__ void matrixMultiply(float *A, float *B, float *C, int numARows,<br>
+int numAColumns, int numBRows,<br>
+int numBColumns, int numCRows,<br>
+int numCColumns) <br>
+{<br>
+ __shared__ float sA[Tile_size][Tile_size];   // Tile size to store elements in shared memory<br>
+    __shared__ float sB[Tile_size][Tile_size];<br>
+int Row = blockDim.y*blockIdx.y + threadIdx.y; //To generate ids of threads.<br>
+    int Col = blockDim.x*blockIdx.x + threadIdx.x;<br>
+    float Cvalue = 0.0;<br>
+    sA[threadIdx.y][threadIdx.x] = 0.0;<br>
+    sB[threadIdx.y][threadIdx.x] = 0.0;<br>
+
+    for (int k = 0; k < (((numAColumns - 1)/ Tile_size) + 1); k++)<br>
+    {<br>
+        if ( (Row < numARows) && (threadIdx.x + (k*Tile_size)) < numAColumns)//Copy Data to Tile from Matrix (Global Memory to Shared Memory)<br>
+        {<br>
+            sA[threadIdx.y][threadIdx.x] = A[(Row*numAColumns) + threadIdx.x + (k*Tile_size)];<br>
+        }<br>
+        else<br>
+        {<br>
+            sA[threadIdx.y][threadIdx.x] = 0.0;<br>
+        }<br>
+        if ( Col < numBColumns && (threadIdx.y + k*Tile_size) < numBRows)//Copy Data to Tile from Matrix (Global Memory to Shared Memory)<br>
+        {<br>
+            sB[threadIdx.y][threadIdx.x] = B[(threadIdx.y + k*Tile_size)*numBColumns + Col];<br>
+        }<br>
+        else<br>
+        {<br>
+            sB[threadIdx.y][threadIdx.x] = 0.0;<br>
+        }<br>
+        __syncthreads();<br>
+
+        for (int j = 0; j < Tile_size; ++j)//Multiplying Elements present in tile<br>
+        {<br>
+            Cvalue += sA[threadIdx.y][j] * sB[j][threadIdx.x];<br>
+        }<br>
+    }<br>
+    if (Row < numCRows && Col < numCColumns)//Saving Final result into Matrix C<br>
+    {<br>
+        C[Row*numCColumns + Col] = Cvalue;<br>
+    }<br>
+}<br>
+
+void Print_Mat(int Row,int Col,float * Mat)//Function To print the Matrix<br>
+{<br>
+ for(int i=0;i<Row*Col;i++)<br>
+   {<br>
+   printf("%f  ",*(Mat+i));<br>
+
+   if((i%Col)==0 )<br>
+    {<br>
+     printf("\n");<br>
+    }<br>
+   }<br>
+}//Function close<br>
+//Normal CPU Matrix Multiplication<br>
+void matMultiplyOnHost(float * A, float * B, float * C, int numARows,<br>
+                        int numAColumns, int numBRows, int numBColumns,<br>
+                        int numCRows, int numCColumns)<br>
+{<br>
+    for (int i=0; i < numARows; i ++)<br>
+    {<br>
+        for (int j = 0; j < numAColumns; j++)<br>
+        {<br>
+            C[i*numCColumns + j ] = 0.0;<br>
+            for (int k = 0; k < numCColumns; k++)<br>
+            {<br>
+                C[i*numCColumns + j ] += A[i*numAColumns + k] * B [k*numBColumns + j];<br>
+            }<br>
+        }<br>
+    }<br>
+    return;<br>
+}<br>
+	
+int main(int argc, char **argv) {<br>
+
+float *hostA; // The A matrix<br>
+float *hostB; // The B matrix<br>
+float *hostC; // The output C matrix<br>
+float *hostComputedC;<br>
+float *deviceA;<br>
+float *deviceB;<br>
+float *deviceC;<br>
+int numARows; // number of rows in the matrix A<br>
+int numAColumns; // number of columns in the matrix A<br>
+int numBRows; // number of rows in the matrix B<br>
+int numBColumns; // number of columns in the matrix B<br>
+int numCRows; // number of rows in the matrix C <br>
+int numCColumns; // number of columns in the matrix C <br>
+
+//-- Set rows and columns for A and B<br>
+  printf("\nPlease Enter Rows and Columns of A:");<br>
+    scanf("%d %d",&numARows,&numAColumns);<br>
+
+    printf("\nPlease Enter Rows and Columns of B:");<br>
+    scanf("%d %d",&numBRows,&numBColumns);<br>
+
+//--Allocate and Initialize hostA and hostB matrices<br>
+ hostA = (float *) malloc(sizeof(float)*numARows*numAColumns);<br>
+ hostB = (float *) malloc(sizeof(float)*numBRows*numBColumns);<br>
+
+ for (int i = 0; i < numARows*numAColumns; i++)//Matrix Initialization<br>
+    {<br>
+        hostA[i]=1.0;<br>
+    }<br>
+    for (int i = 0; i < numBRows*numBColumns; i++)<br>
+    {<br>
+        hostB[i]=1.0;<br>
+    }<br>
+
+    printf("\nMatrix A Values:\n");<br>
+    Print_Mat(numARows,numAColumns,hostA);//Function Call<br>
+
+    printf("\n\nMatrix B Values:\n");<br>
+    Print_Mat(numBRows,numBColumns,hostB);//Function Call<br>
+
+//-- Set rows and columns for C<br>
+  numCRows = numARows;<br>
+    numCColumns = numBColumns;<br>
+
+
+//-- Allocate the hostC matrix<br>
+ hostC = (float *) malloc(sizeof(float)*numCRows*numCColumns);<br>
+ hostComputedC = (float *) malloc(sizeof(float)*numCRows*numCColumns);<br>
+
+
+//-- Allocate GPU memory <br>
+	cudaMalloc((void **)&deviceA, sizeof(float)*numARows*numAColumns);<br>
+    	cudaMalloc((void **)&deviceB, sizeof(float)*numBRows*numBColumns);<br>
+    	cudaMalloc((void **)&deviceC, sizeof(float)*numCRows*numCColumns);<br>
+
+
+//-- Copy memory to the GPU <br>
+	cudaMemcpy(deviceA, hostA, sizeof(float)*numARows*numAColumns, cudaMemcpyHostToDevice);<br>
+    	cudaMemcpy(deviceB, hostB, sizeof(float)*numBRows*numBColumns, cudaMemcpyHostToDevice);<br>
+
+
+//-- Initialize the grid and block dimensions <br>
+    dim3 dimGrid((numCColumns/Tile_size) + 1, (numCRows/Tile_size) + 1, 1);//Number of Blocks required<br>
+    dim3 dimBlock(Tile_size, Tile_size, 1);//Number of threads in each block<br>
+
+//-- Launch the GPU Kernel <br>
+  matrixMultiply<<<dimGrid, dimBlock>>>(deviceA, deviceB, deviceC, numARows, numAColumns, numBRows, numBColumns, numCRows, numCColumns);<br>
+    cudaError_t err1 = cudaPeekAtLastError();<br>
+cudaDeviceSynchronize();<br>
+
+//-- Copy the GPU memory back to the CPU <br>
+   cudaMemcpy(hostC, deviceC, sizeof(float)*numCRows*numCColumns, cudaMemcpyDeviceToHost);<br>
+  printf("\nMatrix C From Device\n");<br>
+    Print_Mat(numCRows,numCColumns,hostC);//Function Call<br>
+
+    matMultiplyOnHost(hostA, hostB, hostComputedC, numARows, numAColumns, numBRows, numBColumns, numCRows, numCColumns);<br>
+
+    printf("\nMatrix C From Host\n");<br>
+    Print_Mat(numCRows,numCColumns,hostComputedC);//Function Call<br>
+
+    for (int i=0; i < numCColumns*numCRows; i++)//Compare both the result matrices 1. MatrixMultiplyonHost 2. MatrixMultiplyonDevice<br>
+    {<br>
+        if (hostComputedC[i]  != hostC[i] )<br>
+        {<br>
+            printf("Mismatch at Row = %d Col = %d hostComputed[] = %f --device[] %f\n", i / numCColumns, i % numCColumns, hostComputedC[i], hostC[i]);<br>
+            break;<br>
+        }<br>
+    }<br>
+
+    printf("\n Number of Blocks Created:%d \n",((numCColumns/Tile_size) + 1)*((numCColumns/Tile_size) + 1));<br>
+    printf("\n Number of Threads Per Block: %d \n",(Tile_size*Tile_size));<br>
+//-- Free the GPU memory <br>
+	cudaFree(deviceA);<br>
+    	cudaFree(deviceB);<br>
+   	cudaFree(deviceC);<br>
+
+
+free(hostA);<br>
+free(hostB);<br>
+free(hostC);<br>
+
+return 0;<br>
+}<br>
+</p>
+</body><
+</html>
+

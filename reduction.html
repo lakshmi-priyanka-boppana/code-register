@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html>
+<body>
+<p>
+
+#include<stdio.h><br>
+#include<stdlib.h><br>
+#include<cuda.h><br>
+#define BLOCK_SIZE 512<br>
+__global__ void total(float *input, float *output, int len) {<br>
+  //-- Load a segment of the input vector into shared memory<br>
+ __shared__  float pSum[2*BLOCK_SIZE];<br>
+int globalThreadId = blockIdx.x*blockDim.x + threadIdx.x;<br>
+    unsigned int th = threadIdx.x;<br>
+    unsigned int start = 2*blockIdx.x*blockDim.x;<br>
+
+    if ((start + th) < len)<br>
+    {<br>
+        pSum[th] = input[start + th];<br>
+    }<br>
+    else<br>
+    {<br>
+        pSum[th] = 0.0;<br>
+    }<br>
+    if ((start + blockDim.x + th) < len)<br>
+    {<br>
+        pSum[blockDim.x + th] = input[start + blockDim.x + th];<br>
+    }<br>
+    else<br>
+    {<br>
+        pSum[blockDim.x + th] = 0.0;<br>
+    }<br>
+
+  //-- Traverse the reduction tree<br>
+ for (unsigned int stride = blockDim.x; stride > 0; stride /= 2)<br>
+    {<br>
+      __syncthreads();<br>
+        if (th < stride)<br>
+            pSum[th] += pSum[th + stride];<br>
+    }<br>
+
+
+    // Write the computed sum of the block to the output vector at correct index<br>
+    if (th == 0 && (globalThreadId*2) < len)<br>
+    {<br>
+        output[blockIdx.x] = pSum[th];<br>
+    }<br>
+}<br>
+
+int main(int argc, char **argv) {<br>
+  int ii;<br>
+  float *hostInput;  // The input 1D list<br>
+  float *hostOutput; // The output list<br>
+  float *deviceInput;<br>
+  float *deviceOutput;<br>
+  int numInputElements;  // number of elements in the input list<br>
+  int numOutputElements; // number of elements in the output list<br>
+
+
+
+  //-- Initialize Host Input Array and number of Input Elements<br>
+
+ numInputElements=(2000);<br>
+hostInput=(float *)malloc(sizeof(float)*numInputElements);<br>
+<br>
+for(int i=0;i<numInputElements;i++)<br>
+{<br>
+hostInput[i]=2.0;<br>
+}<br>
+
+
+  //initialize number of elements based on number of input elements<br>
+  numOutputElements = numInputElements / (BLOCK_SIZE << 1);<br>
+  if (numInputElements % (BLOCK_SIZE << 1)) {<br>
+    numOutputElements++;<br>
+  }<br>
+  hostOutput = (float *)malloc(numOutputElements * sizeof( float));<br>
+
+
+
+  //-- Allocate GPU memory here<br>
+cudaMalloc((void**)&deviceInput,numInputElements*sizeof(float));<br>
+cudaMalloc((void**)&deviceOutput,numInputElements*sizeof(float));<br>
+
+  //-- Copy memory to the GPU here<br>
+   cudaMemcpy(deviceInput, hostInput, numInputElements * sizeof(float), cudaMemcpyHostToDevice);<br>
+  //-- Initialize the grid and block dimensions here<br>
+   dim3 DimGrid( numOutputElements, 1, 1);<br>
+    dim3 DimBlock(BLOCK_SIZE, 1, 1);<br>
+  //-- Launch the GPU Kernel here<br>
+total<<<DimGrid,DimBlock>>>(deviceInput, deviceOutput, numInputElements);<br>
+  cudaDeviceSynchronize();<br>
+
+<br>
+  //-- Copy the GPU memory back to the CPU here<br>
+
+cudaMemcpy(hostOutput, deviceOutput, numOutputElements * sizeof(float), cudaMemcpyDeviceToHost);<br>
+  /********************************************************************<br>
+   * Reduce output vector on the host<br>
+   * NOTE: One could also perform the reduction of the output vector<br>
+   * recursively and support any size input. For simplicity, we do not<br>
+   * require that for this lab.<br>
+   ********************************************************************/<br>
+
+  for (ii = 1; ii < numOutputElements; ii++)<br>
+    {<br>
+        hostOutput[0] += hostOutput[ii];<br>
+    }<br>
+
+    printf(" Reduced Sum from GPU = %.2f\n", hostOutput[0]);<br>
+  //-- Free the GPU memory here<br>
+
+cudaFree(deviceInput);<br>
+    cudaFree(deviceOutput);<br>
+
+
+  free(hostInput);<br>
+  free(hostOutput);<br>
+
+  return 0;<br>
+}<br>
+</p>
+</bpdy>
+</html>
+
+
+

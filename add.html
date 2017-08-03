@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+<body>
+<p>
+#include <stdio.h> <br>
+ #include <stdlib.h><br>
+ #include <math.h><br>
+
+ __global__ void vecAddKernel(float *A, float *B, float *C, int N) {<br>
+  //-- Insert code to implement vector addition here<br>
+    int i = threadIdx.x+blockDim.x*blockIdx.x;<br>
+    if(i<N)<br>
+    {<br>
+      C[i] = A[i] + B[i];<br>
+    }<br>
+ }<br>
+
+ int main(int argc, char **argv) {<br>
+
+    //--input length<br>
+    int N = 100;<br>
+
+    //--host variables<br>
+    float *h_A;<br>
+    float *h_B;<br>
+    float *h_C;<br>
+
+    //--device (gpu) variables<br>
+    float *d_A;<br>
+    float *d_B;<br>
+    float *d_C;<br>
+
+    //--variable holding the size of a float in bytes<br>
+    size_t bytes = N * sizeof(float);<br>
+
+    //--allocate host memory <br>
+    h_A = (float *)malloc(bytes);<br>
+    h_B = (float *)malloc(bytes);<br>
+    h_C = (float *)malloc(bytes);<br>
+
+    //--initiate the vectors with random numbers between 0 and 9 (change initialization as you wish)<br>
+	int i;<br>
+	for(i = 0; i < N; i++)<br>
+	{<br>
+	  h_A[i] = rand() % 10;<br>
+	  h_B[i] = rand() % 10;<br>
+	}<br>
+
+    //--TASK-- Allocate GPU memory here<br>
+    cudaMalloc((void **) &d_A, bytes);   <br> 
+    cudaMalloc((void **) &d_B, bytes);<br>
+    cudaMalloc((void **) &d_C, bytes);<br>
+  
+    //--TASK-- Copy memory to the Gpu here<br>
+    cudaMemcpy(d_A,h_A,bytes, cudaMemcpyHostToDevice);<br>
+    cudaMemcpy(d_B, h_B, bytes, cudaMemcpyHostToDevice);<br>
+
+
+
+    //--TASK-- Initialize the grid and block dimensions here<br>
+    dim3 DimGrid((N-1)/256 + 1, 1, 1);<br>
+    dim3 DimBlock(256, 1, 1);<br>
+      
+    //--TASK-- Launch the GPU Kernel here<br>
+    vecAddKernel<<<DimGrid,DimBlock>>>(d_A, d_B, d_C, N);<br>
+    cudaDeviceSynchronize();<br>
+
+    //--TASK-- Copy the GPU memory back to the CPU here<br>
+    cudaMemcpy(h_C, d_C, bytes, cudaMemcpyDeviceToHost);<br>
+    int r=0;<br>
+    for( r = 0;r<N;r++)<br>
+    {
+      printf("%.2f + %.2f = %.2f \n",h_A[r],h_B[r],h_C[r]);<br>
+    }<br>
+    //--TASK-- Free the GPU memory here<br>
+
+    cudaFree(d_A);<br>
+    cudaFree(d_B);<br>
+    cudaFree (d_C);<br>
+
+    //--free host memory<br>
+    free(h_A);<br>
+    free(h_B);<br>
+    free(h_C);<br>
+
+    return 0;<br>
+ }<br>
+ </body>
+ </html>
+ 
+ 
